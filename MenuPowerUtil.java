@@ -42,7 +42,7 @@ public class MenuPowerUtil
     /**
      * 내가 소속한 그룹의 권한맵 가져오기
      * 
-     * @return
+     * @return Map< String, Object >
      */
     private static Map< String, Object > getMyGroupPowerMap()
     {
@@ -59,7 +59,7 @@ public class MenuPowerUtil
      * 권한 맵 가져오기
      * 
      * @param url
-     * @return
+     * @return Map< String, Object >
      */
     private static Map< String, Object > getPowerMap( String url )
     {
@@ -73,7 +73,7 @@ public class MenuPowerUtil
      * 
      * @param userPower
      * @param typePower
-     * @return
+     * @return boolean
      */
     private static boolean comparePower( Long userPower, long typePower )
     {
@@ -110,6 +110,7 @@ public class MenuPowerUtil
      * 권한 맵 변경
      * 
      * @param list
+     * @param adminGroupNo
      * @param isGroupCheck
      */
     public static void putPowerMap( List<DefaultMap> list, String adminGroupNo, boolean isGroupCheck )
@@ -151,7 +152,8 @@ public class MenuPowerUtil
      * 권한 확인하기
      * 
      * @param power
-     * @param url
+     * @param requestURI
+     * @param params
      * @return boolean
      */
     public static boolean isAllowPower( long power, String requestURI, String[] params )
@@ -186,7 +188,8 @@ public class MenuPowerUtil
     /**
      * 권한 맵 가져오기
      * 
-     * @param url
+     * @param requestURI
+     * @param params
      * @return DefaultMap
      */
     public static DefaultMap getPower( String requestURI, String[] params )
