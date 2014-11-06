@@ -1,6 +1,8 @@
 package kcp.common.utils;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
@@ -11,56 +13,90 @@ import webwork.action.ServletActionContext;
 
 public class MenuPowerUtil
 {
-    private static final boolean IS_STATIC_PWR_MAP = true; //전역 권한 맵 사용 여부( false일 경우 사용자 별 SessionMap에 권한이 담긴다. )
-    
     private static final long DEFAULT_POWER_VALUE = 0; //권한 없는 값
     
     private static final String URL_KEY = "mnu_url"; //Login.getMenuPowerListByGroupNo 쿼리에 있는 column 명
     private static final String POWER_KEY = "mnu_pwr";
     private static final String MENU_KEY = "mnu_cd";
     
-    private static DefaultMap GROUP_POWER_MAP = IS_STATIC_PWR_MAP ? new DefaultMap() : null; //권한 맵
-    
+    private static final Map< String, Object > GROUP_POWER_MAP = new ConcurrentHashMap< String, Object >(); //권한 맵
     private MenuPowerUtil(){}
-    
-    private static HttpSession getSession()
+
+    /**
+     * 새로운 세션 가져오기
+     * 
+     * @return HttpSession
+     */
+    private static HttpSession getNewSession()
     {
         HttpServletRequest request = ServletActionContext.getRequest();
         
         return request == null ? null : request.getSession( true );
     }
     
-    private static DefaultMap getUrlMap()
+    private static Map< String, Object > getNewMap()
     {
-        HttpSession session = getSession();
-        DefaultMap urlMap = null;
-        
-        if( session == null ) return new DefaultMap();
-        
-        if( IS_STATIC_PWR_MAP )
-            urlMap = ( DefaultMap ) GROUP_POWER_MAP.get( session.getAttribute(CommonConst.SESSION_ADMIN_GP_NO) );
-        else
-            urlMap = ( DefaultMap ) session.getAttribute( CommonConst.SESSION_MENU_URL_POWER );
-        
-        return urlMap == null ? new DefaultMap() : urlMap;
+        return new DefaultMap();
     }
     
-    private static DefaultMap getPowerMap( String url )
+    /**
+     * 내가 소속한 그룹의 권한맵 가져오기
+     * 
+     * @return
+     */
+    private static Map< String, Object > getMyGroupPowerMap()
     {
-        DefaultMap urlMap = getUrlMap()
-                , powerMap = ( DefaultMap ) urlMap.get( url.replace("/", "") );
+        HttpSession session = getNewSession();
 
-        return powerMap == null ? new DefaultMap() : powerMap;
+        if( session == null ) return getNewMap();
+        
+        Object power = GROUP_POWER_MAP.get( session.getAttribute(CommonConst.SESSION_ADMIN_GP_NO) );
+
+        return power == null ? getNewMap() : ( Map<String, Object> ) power;
     }
     
+    /**
+     * 권한 맵 가져오기
+     * 
+     * @param url
+     * @return
+     */
+    private static Map< String, Object > getPowerMap( String url )
+    {
+        Object powerMap = getMyGroupPowerMap().get( url.replace("/", "") );
+
+        return powerMap == null ? getNewMap() : ( Map<String, Object> ) powerMap;
+    }
+    
+    /**
+     * 권한 비교
+     * 
+     * @param userPower
+     * @param typePower
+     * @return
+     */
     private static boolean comparePower( Long userPower, long typePower )
     {
+        // 신규메뉴 사용시
         return (userPower & typePower) == typePower;
+        
+        // 신규메뉴 문제 발생시 기존으로 돌릴때.
+        //return true;
     }
     
+    /**
+     * URL 조합
+     * 
+     * @param requestURI
+     * @param params
+     * @return String
+     */
     private static String urlJoin( String requestURI, String[] params )
     {
-        StringBuffer sb = new StringBuffer( requestURI ).append( "?" );
+        if( params == null )
+            return requestURI;
+        
+        StringBuffer sb = new StringBuffer( requestURI ).append( '?' );
         
         for( int li = 0, limit = params.length; li < limit; ++li )
             sb.append( params[li] ).append( li % 2 == 0 ? '=' : '&' );
@@ -76,42 +112,26 @@ public class MenuPowerUtil
      * @param list
      * @param isGroupCheck
      */
-    public static void putPowerMap( List<DefaultMap> list, boolean isGroupCheck )
+    public static void putPowerMap( List<DefaultMap> list, String adminGroupNo, boolean isGroupCheck )
     {
-        HttpSession session = getSession();
-        
-        if( session == null ) return;
-        
-        String adminGroupNo = session.getAttribute( CommonConst.SESSION_ADMIN_GP_NO ).toString();
-        //전역 권한 맵을 사용하고 권한을 추가하기 전에 체크 할 것인지 여부가 true이고 그룹의 권한이 이미 있다면 맵에 담지 않는다.
-        if( IS_STATIC_PWR_MAP && isGroupCheck && GROUP_POWER_MAP.containsKey(adminGroupNo) )
-                return;
+        if( adminGroupNo == null ) return;
+        //권한맵 수정하기전 키를 체크 할 것인지 여부가 참이고 그룹의 권한이 이미 있다면 맵에 담지 않는다.
+        if( isGroupCheck && GROUP_POWER_MAP.containsKey(adminGroupNo) )
+            return;
 
-        DefaultMap urlMap = new DefaultMap();
+        Map< String, Object > urlMap = getNewMap()
+                , tempMap = ( Map<String, Object> ) GROUP_POWER_MAP.get( adminGroupNo );
         
         for( DefaultMap menuPower : list )
             urlMap.put( menuPower.getStr(URL_KEY), menuPower );
         
-        if( IS_STATIC_PWR_MAP )
+        GROUP_POWER_MAP.put( adminGroupNo, urlMap );
+        
+        if( tempMap != null )
         {
-            if( !isGroupCheck ) //static은 clear() 메서드로만 삭제 가능
-            {
-                DefaultMap tempMap = ( DefaultMap ) GROUP_POWER_MAP.clone();
-                tempMap.put( adminGroupNo, urlMap );
-                GROUP_POWER_MAP.clear();
-                GROUP_POWER_MAP = tempMap;
-            }
-            else
-                GROUP_POWER_MAP.put( adminGroupNo, urlMap );
+            tempMap.clear();
+            tempMap = null;
         }
-        else
-            session.setAttribute( CommonConst.SESSION_MENU_URL_POWER, urlMap );
-
-    }
-    
-    public static boolean isAllowPower( long power, String requestURI, String[] params )
-    {
-        return isAllowPower( power, urlJoin(requestURI, params) );
     }
     
     /**
@@ -119,31 +139,39 @@ public class MenuPowerUtil
      * 
      * @param power
      * @param url
-     * @return
+     * @return boolean
      */
     public static boolean isAllowPower( long power, String url )
     {
-        return comparePower( getPowerMap(url).getLong(POWER_KEY, DEFAULT_POWER_VALUE), power );
+        DefaultMap powerMap = ( DefaultMap ) getPowerMap( url );
+        return comparePower( powerMap.getLong(POWER_KEY, DEFAULT_POWER_VALUE), power );
     }
     
-    public static DefaultMap getPower( String requestURI, String[] params )
+    /**
+     * 권한 확인하기
+     * 
+     * @param power
+     * @param url
+     * @return boolean
+     */
+    public static boolean isAllowPower( long power, String requestURI, String[] params )
     {
-        return getPower( urlJoin(requestURI, params) );
+        return isAllowPower( power, urlJoin(requestURI, params) );
     }
-    
+
     /**
      * 권한 맵 가져오기
      * 
      * @param url
-     * @return
+     * @return DefaultMap
      */
     public static DefaultMap getPower( String url )
     {
-        DefaultMap menuPowerMap = getPowerMap( url )
-                   , dMap = new DefaultMap();
-        Long userPower = menuPowerMap.getLong( POWER_KEY, DEFAULT_POWER_VALUE );
+        DefaultMap powerMap = ( DefaultMap ) getPowerMap( url )
+                , dMap = new DefaultMap();
+        long userPower = powerMap.getLong( POWER_KEY, DEFAULT_POWER_VALUE );
 
-        dMap.put( CommonConst.MENU_CD_KEY, menuPowerMap.getStr(MENU_KEY) );
+        dMap.put( CommonConst.MENU_CD_KEY, powerMap.getStr(MENU_KEY) );
         dMap.put( CommonConst.DIS_KEY, comparePower(userPower, CommonConst.DIS_PWR) );
         dMap.put( CommonConst.REG_KEY, comparePower(userPower, CommonConst.REG_PWR) );
         dMap.put( CommonConst.MOD_KEY, comparePower(userPower, CommonConst.MOD_PWR) );
@@ -153,5 +181,16 @@ public class MenuPowerUtil
         dMap.put( CommonConst.PRIVATE_XLS_KEY, comparePower(userPower, CommonConst.PRIVATE_XLS_PWR) );
         
         return dMap;
+    }
+    
+    /**
+     * 권한 맵 가져오기
+     * 
+     * @param url
+     * @return DefaultMap
+     */
+    public static DefaultMap getPower( String requestURI, String[] params )
+    {
+        return getPower( urlJoin(requestURI, params) );
     }
 }
