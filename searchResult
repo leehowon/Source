@@ -1,0 +1,109 @@
+<%@ page language="java" contentType="text/html; charset=EUC-KR"
+    pageEncoding="EUC-KR" import="java.io.*
+                                    , java.net.HttpURLConnection
+                                    , java.net.URL
+                                    , java.util.regex.Matcher
+                                    , java.util.regex.Pattern" %>
+<%
+    HttpURLConnection connection = null;
+    OutputStream os = null;
+    String query = "ASFASGSADFAS"
+            , url = "http://www.ncbi.nlm.nih.gov/blast/Blast.cgi"
+            , putIFParam = "CMD=Put&DATABASE=nr&PROGRAM=blastn&QUERY=" + query
+            , getIFParam = "CMD=Get&db=nucleotide&DATABASE=nr&PROGRAM=blastn&RID=";
+
+    try
+    {
+        connection = ( HttpURLConnection ) new URL( url ).openConnection();
+        connection.setDoOutput( true );
+        connection.setRequestMethod( "POST" );
+        connection.setUseCaches( false );
+        connection.setRequestProperty( "Content-Length", Integer.toString(putIFParam.length()) );
+
+        os = connection.getOutputStream();
+        os.write( putIFParam.getBytes() );
+        os.flush();
+        os.close();
+        //결과값 수신
+        int rc = connection.getResponseCode();
+
+        if( connection.getResponseCode() == 200 )
+        {
+            InputStreamReader in = new InputStreamReader( connection.getInputStream(), "utf-8" );
+            BufferedReader br = new BufferedReader( in );
+            String data = "", strLine = "", rid = "";
+
+            while ( (strLine = br.readLine()) != null ) 
+                data = data.concat( strLine );
+            
+            Matcher m = Pattern.compile( "RID%3D[A-Z,0-9]+[^%]*[$]?" ).matcher( data );
+            rid = m.find() ? m.group( 0 ).replaceAll( "RID%3D", "" ).trim() : "";
+            getIFParam += rid;
+            
+            out.println( rid );
+            /**/
+            br.close();
+            in.close();
+            connection.disconnect();
+
+            String repeatParam = "";
+            int count = 0;
+            do
+            {
+                data = "";
+
+                connection = ( HttpURLConnection ) new URL( url ).openConnection();
+                connection.setDoOutput( true );
+                connection.setRequestMethod( "POST" );
+                connection.setUseCaches( false );
+                connection.setRequestProperty( "Content-Length", Integer.toString(repeatParam != "" ? repeatParam.length() : getIFParam.length()) );
+
+                os = connection.getOutputStream();
+                os.write( repeatParam != "" ? repeatParam.getBytes() : getIFParam.getBytes() );
+                os.flush();
+                os.close();
+                
+                in = new InputStreamReader( connection.getInputStream(), "utf-8" );
+                br = new BufferedReader( in );
+                
+                while ( (strLine = br.readLine()) != null ) 
+                    data = data.concat( strLine );
+
+                br.close();
+                in.close();
+                connection.disconnect();
+                repeatParam = getIFParam + "&OLD_BLAST=false&_PGR=" + count++;
+                
+                System.out.println( data );
+                Thread.sleep( 2000 );
+            }
+            while( data.indexOf("Status=WAITING") > -1 );
+
+            out.println( data );
+            return;
+            /**/
+        }
+        else
+        {
+            System.out.println("http response code error: " + rc + "\n");
+
+            return;
+        }
+    }
+    catch ( IOException e )
+    {
+        System.out.println("search URL connect failed: "
+                + e.getMessage());
+
+        e.printStackTrace();
+
+    }
+    finally
+    {
+        if (os != null)
+            os.close();
+
+        connection.disconnect();
+
+    }
+%>
