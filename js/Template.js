@@ -1,14 +1,11 @@
 Template = function( template ){ // String or jQuery HTML only
     function match( str ){
-            var vals = str.split( _pattern )
-                , obj = {};
+            var obj = {}
+                , matches = undefined;
 
-        for( var val in vals ){
-            var var matches = _pattern.exec( vals[val] );
+        while( (matches = _pattern.exec(str)) )
+            obj[ matches[2] ] = matches[ 1 ];
             
-            matches && ( obj[matches[2]] = matches[1] );
-        }
-        
         return obj;
     }
     
